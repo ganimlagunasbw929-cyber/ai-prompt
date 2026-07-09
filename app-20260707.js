@@ -9,6 +9,41 @@
     let cloudbaseDb = null;
     let cloudbaseReady = false;
 
+    // 本地 SHA-256 计算
+    function sha256(text) {
+        // 使用 Web Crypto API（浏览器原生）
+        const encoder = new TextEncoder();
+        const data = encoder.encode(String(text).trim());
+        return crypto.subtle.digest('SHA-256', data).then(hash => {
+            return Array.from(new Uint8Array(hash))
+                .map(b => b.toString(16).padStart(2, '0'))
+                .join('');
+        });
+    }
+
+    // 本地邀请码验证（CloudBase 不可用时的备选方案）
+    async function verifyLocalCode(code) {
+        const codeHash = await sha256(code);
+        const now = new Date();
+        // 检查本地使用记录
+        const usedHashes = JSON.parse(localStorage.getItem('gpt2_used_hashes') || '[]');
+        for (const item of (window.INVITE_CODES || [])) {
+            if (item.hash === codeHash) {
+                if (item.used || usedHashes.includes(codeHash)) {
+                    return { ok: false, error: '邀请码已被使用' };
+                }
+                if (item.expires && now >= new Date(item.expires)) {
+                    return { ok: false, error: '邀请码已过期' };
+                }
+                // 标记已使用
+                usedHashes.push(codeHash);
+                localStorage.setItem('gpt2_used_hashes', JSON.stringify(usedHashes));
+                return { ok: true };
+            }
+        }
+        return { ok: false, error: '无效的邀请码' };
+    }
+
     async function initCloudBase() {
         try {
             if (typeof cloudbase === 'undefined') {
@@ -179,14 +214,6 @@
         }
     }
 
-    async function sha256(text) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(text);
-        const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-    }
-
     async function unlockWithInvite() {
         const code = inviteCodeInput.value.trim();
         if (!code) {
@@ -194,30 +221,33 @@
             return;
         }
 
-        if (!cloudbaseReady || !cloudbaseApp) {
-            showToast('邀请码服务暂不可用，请稍后再试');
-            return;
-        }
-
         inviteSubmit.disabled = true;
-        try {
-            const res = await cloudbaseApp.callFunction({
-                name: 'verifyInviteCode',
-                data: { code }
-            });
-            const result = res && res.result ? res.result : res;
-            if (!result || !result.ok) {
-                showToast((result && result.error) || '邀请码验证失败，请扫码申请');
-                return;
+        let result = null;
+
+        // 尝试 CloudBase 云函数，失败则用本地验证
+        if (cloudbaseReady && cloudbaseApp) {
+            try {
+                const res = await cloudbaseApp.callFunction({
+                    name: 'verifyInviteCode',
+                    data: { code }
+                });
+                result = res && res.result ? res.result : res;
+            } catch (e) {
+                console.log('[CloudBase] 云函数不可用，切换本地验证');
             }
-        } catch (e) {
-            console.error('[CloudBase] verifyInviteCode failed:', e);
-            showToast('邀请码服务暂不可用，请稍后再试');
-            return;
-        } finally {
-            inviteSubmit.disabled = false;
         }
 
+        if (!result) {
+            result = await verifyLocalCode(code);
+        }
+
+        if (!result || !result.ok) {
+            showToast((result && result.error) || '邀请码验证失败，请扫码申请');
+            inviteSubmit.disabled = false;
+            return;
+        }
+
+        inviteSubmit.disabled = false;
         state.unlocked = true;
         localStorage.setItem(UNLOCK_STORAGE_KEY, 'true');
         localStorage.removeItem('gpt2_unlocked');

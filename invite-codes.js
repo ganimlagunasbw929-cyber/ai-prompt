@@ -1,15 +1,9 @@
-// 邀请码回退数据（本地 SHA-256 验证）
-// 由 manage_codes.py 自动生成，每次生成新码后更新
-// 生成时间: 2026-07-07T15:57:43.901338
-// 仅在 CloudBase SDK 无法加载时作为备选方案
+// 邀请码本地验证数据
+// 生成时间: 2026-07-09
+// 格式: { hash: SHA-256(邀请码), expires: 到期时间, used: false }
+// CloudBase 不可用时的备选方案
 
 window.INVITE_CODES = [
-    {
-        "hash": "",
-        "expires": "",
-        "used": false
-    },
-    {
         "hash": "796f20d5bf78b1debfea51be6f573ab09a884c97c7614dfb17b8bf43b78666ba",
         "expires": "2026-07-14 15:39:45",
         "used": false
