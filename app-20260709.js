@@ -156,7 +156,7 @@
     function init() {
         migrateFavorites();
         applyTheme(state.theme);
-        totalCount.textContent = PROMPT_DATA.length;
+        if (totalCount) totalCount.textContent = PROMPT_DATA.length;
         renderCategories();
         renderCards();
         updateFavCount();
