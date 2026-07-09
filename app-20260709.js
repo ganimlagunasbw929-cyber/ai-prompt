@@ -69,6 +69,8 @@
     // 本地邀请码验证（CloudBase 不可用时的备选方案）
     async function verifyLocalCode(code) {
         const codeHash = await sha256(code);
+        console.log('[LocalVerify] Input code:', code, 'Hash:', codeHash);
+        console.log('[LocalVerify] Available hashes:', (window.INVITE_CODES || []).map(function(h) { return h.hash; }));
         const now = new Date();
         // 检查本地使用记录
         const usedHashes = JSON.parse(localStorage.getItem('gpt2_used_hashes') || '[]');
@@ -86,6 +88,7 @@
                 return { ok: true };
             }
         }
+        console.log('[LocalVerify] No matching hash found for:', codeHash);
         return { ok: false, error: '无效的邀请码' };
     }
 
@@ -269,21 +272,25 @@
         inviteSubmit.disabled = true;
         let result = null;
 
-        // 尝试 CloudBase 云函数，失败则用本地验证
-        if (cloudbaseReady && cloudbaseApp) {
-            try {
-                const res = await cloudbaseApp.callFunction({
-                    name: 'verifyInviteCode',
-                    data: { code }
-                });
-                result = res && res.result ? res.result : res;
-            } catch (e) {
-                console.log('[CloudBase] 云函数不可用，切换本地验证');
-            }
-        }
+        // 优先本地验证（CloudBase 云函数在新域名下不可用）
+        result = await verifyLocalCode(code);
 
-        if (!result) {
-            result = await verifyLocalCode(code);
+        // 本地验证失败时，尝试 CloudBase 作为备选
+        if (!result || !result.ok) {
+            if (cloudbaseReady && cloudbaseApp) {
+                try {
+                    const res = await cloudbaseApp.callFunction({
+                        name: 'verifyInviteCode',
+                        data: { code }
+                    });
+                    const cbResult = res && res.result ? res.result : res;
+                    if (cbResult && cbResult.ok) {
+                        result = cbResult;
+                    }
+                } catch (e) {
+                    console.log('[CloudBase] 云函数不可用');
+                }
+            }
         }
 
         if (!result || !result.ok) {
